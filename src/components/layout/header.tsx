@@ -4,10 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Heart, Menu, Search, ShoppingBag, User, X } from "lucide-react";
+import { Heart, LayoutDashboard, LogOut, Menu, Search, ShoppingBag, User, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Container } from "@/components/ui/container";
 import { Separator } from "@/components/ui/separator";
+import { UserMenu, type UserMenuUser } from "@/components/layout/user-menu";
+import { signOutAction } from "@/actions/auth";
 
 const NAV_LINKS = [
   { href: "/shop", label: "Shop" },
@@ -20,9 +22,10 @@ const ICON_BUTTON_CLASS =
 
 interface HeaderProps {
   cartCount?: number;
+  user?: UserMenuUser | null;
 }
 
-export function Header({ cartCount = 0 }: HeaderProps) {
+export function Header({ cartCount = 0, user = null }: HeaderProps) {
   const pathname = usePathname();
   const isHomepage = pathname === "/";
   const [scrolled, setScrolled] = useState(false);
@@ -97,9 +100,9 @@ export function Header({ cartCount = 0 }: HeaderProps) {
           <Link href="/wishlist" className={cn(ICON_BUTTON_CLASS, "hidden md:inline-flex")} aria-label="Wishlist">
             <Heart className="size-5" aria-hidden="true" />
           </Link>
-          <Link href="/account" className={cn(ICON_BUTTON_CLASS, "hidden md:inline-flex")} aria-label="Account">
-            <User className="size-5" aria-hidden="true" />
-          </Link>
+          <div className="hidden md:inline-flex">
+            <UserMenu user={user} />
+          </div>
           <Link
             href="/cart"
             className={cn(ICON_BUTTON_CLASS, "relative")}
@@ -175,10 +178,43 @@ export function Header({ cartCount = 0 }: HeaderProps) {
                   <Heart className="size-5" aria-hidden="true" />
                   Wishlist
                 </Link>
-                <Link href="/account" className="flex items-center gap-3" onClick={() => setMobileOpen(false)}>
-                  <User className="size-5" aria-hidden="true" />
-                  Account
-                </Link>
+                {user ? (
+                  <>
+                    <Link
+                      href="/account"
+                      className="flex items-center gap-3"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      <User className="size-5" aria-hidden="true" />
+                      Account
+                    </Link>
+                    {user.role === "ADMIN" && (
+                      <Link
+                        href="/admin"
+                        className="flex items-center gap-3"
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        <LayoutDashboard className="size-5" aria-hidden="true" />
+                        Admin
+                      </Link>
+                    )}
+                    <form action={signOutAction}>
+                      <button type="submit" className="flex items-center gap-3">
+                        <LogOut className="size-5" aria-hidden="true" />
+                        Sign out
+                      </button>
+                    </form>
+                  </>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="flex items-center gap-3"
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <User className="size-5" aria-hidden="true" />
+                    Sign In
+                  </Link>
+                )}
               </div>
             </motion.div>
           </>

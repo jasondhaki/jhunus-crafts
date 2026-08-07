@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { auth } from "../../auth";
 import "./globals.css";
 
 const playfairDisplay = Playfair_Display({
@@ -25,14 +26,16 @@ export const metadata: Metadata = {
     "Handwoven jute bags, baskets, and home goods, made by a small collective of artisans practicing a craft passed down for generations.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const session = await auth();
+
   return (
     <html
       lang="en"
       className={`${playfairDisplay.variable} ${plusJakartaSans.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-parchment font-sans text-bark">
-        <Header />
+        <Header user={session?.user ?? null} />
         <main className="flex-1">{children}</main>
         <Footer />
       </body>

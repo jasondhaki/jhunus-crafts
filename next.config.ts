@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  experimental: {
+    // Enables the forbidden()/unauthorized() functions from next/navigation,
+    // used by src/lib/auth-guards.ts for role-based access control.
+    authInterrupts: true,
+  },
 };
 
 export default nextConfig;
