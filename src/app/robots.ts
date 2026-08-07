@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
-
-const BASE_URL = process.env.AUTH_URL ?? "http://localhost:3000";
+import { SITE_URL as BASE_URL } from "@/lib/site-config";
 
 export default function robots(): MetadataRoute.Robots {
   return {

@@ -1,10 +1,6 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
-
-// AUTH_URL already represents this app's canonical origin (used for
-// NextAuth callback URLs), so it doubles as the site's public base URL
-// rather than introducing a second env var for the same value.
-const BASE_URL = process.env.AUTH_URL ?? "http://localhost:3000";
+import { SITE_URL as BASE_URL } from "@/lib/site-config";
 
 // Without this, Next tries to statically prerender the sitemap at build
 // time — which means it needs a live DB connection during `next build`.

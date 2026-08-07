@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { SITE_URL } from "@/lib/site-config";
 import { auth } from "../../auth";
 import "./globals.css";
 
@@ -18,7 +19,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.AUTH_URL ?? "http://localhost:3000"),
+  metadataBase: new URL(SITE_URL),
   title: {
     template: "%s | Jhunu's Crafts",
     default: "Jhunu's Crafts | Handcrafted Jute Bags & Home Goods",
