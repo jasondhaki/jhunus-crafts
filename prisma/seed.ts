@@ -1,10 +1,9 @@
 import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
 
-// Placeholder photography only — these are unverified Unsplash CDN URLs,
-// not confirmed to resolve to jute products specifically. Swap for real
-// Cloudinary-hosted product photography before Phase 2 ships anything
-// customer-facing.
+// Placeholder photography only — confirmed to resolve (HTTP 200) but not
+// necessarily jute-specific. Swap for real Cloudinary-hosted product
+// photography before this ships anything customer-facing.
 const PLACEHOLDER_IMAGES = [
   "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=1200&q=80",
   "https://images.unsplash.com/photo-1590874103328-eac38a683ce7?auto=format&fit=crop&w=1200&q=80",
