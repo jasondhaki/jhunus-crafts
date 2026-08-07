@@ -18,6 +18,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.AUTH_URL ?? "http://localhost:3000"),
   title: {
     template: "%s | Jhunu's Crafts",
     default: "Jhunu's Crafts | Handcrafted Jute Bags & Home Goods",

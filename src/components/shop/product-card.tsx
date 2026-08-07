@@ -3,8 +3,11 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice } from "@/lib/money";
+import { shimmerDataUrl } from "@/lib/blur-placeholder";
 
 const LOW_STOCK_THRESHOLD = 3;
+const BLUR_DATA_URL = shimmerDataUrl(600, 600);
+const IMAGE_SIZES = "(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw";
 
 export interface ProductCardProduct {
   slug: string;
@@ -19,23 +22,53 @@ export function ProductCard({ product }: { product: ProductCardProduct }) {
   const isSoldOut = product.stock <= 0;
   const isLowStock = !isSoldOut && product.stock <= LOW_STOCK_THRESHOLD;
   const isOnSale = !isSoldOut && !!product.compareAtCents && product.compareAtCents > product.priceCents;
+  const [primaryImage, secondaryImage] = product.images;
 
   return (
     <Link href={`/shop/${product.slug}`} className="group block">
-      <Card className="overflow-hidden border-hairline">
+      <Card
+        className={
+          "overflow-hidden border-hairline transition-transform duration-300 ease-out group-hover:-translate-y-1"
+        }
+      >
         <div className="relative aspect-square overflow-hidden bg-jute/10">
-          {product.images[0] && (
+          {primaryImage && (
             <Image
-              src={product.images[0]}
+              src={primaryImage}
               alt={product.title}
               fill
-              sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
-              className="object-cover transition-transform duration-300 ease-out group-hover:scale-105"
+              sizes={IMAGE_SIZES}
+              placeholder="blur"
+              blurDataURL={BLUR_DATA_URL}
+              className={
+                "object-cover transition-opacity duration-300 ease-out" +
+                (secondaryImage ? " group-hover:opacity-0" : "")
+              }
             />
           )}
+          {secondaryImage && (
+            <Image
+              src={secondaryImage}
+              alt=""
+              aria-hidden="true"
+              fill
+              sizes={IMAGE_SIZES}
+              placeholder="blur"
+              blurDataURL={BLUR_DATA_URL}
+              className="object-cover opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100"
+            />
+          )}
+
+          {isSoldOut && (
+            <div className="absolute inset-0 flex items-center justify-center bg-bark/50">
+              <span className="text-sm font-semibold uppercase tracking-wide text-cream">
+                Sold Out
+              </span>
+            </div>
+          )}
+
           <div className="absolute left-3 top-3 flex flex-col gap-2">
             {isOnSale && <Badge variant="sale">Sale</Badge>}
-            {isSoldOut && <Badge variant="sold-out">Sold Out</Badge>}
             {isLowStock && <Badge variant="low-stock">Only {product.stock} left</Badge>}
           </div>
         </div>

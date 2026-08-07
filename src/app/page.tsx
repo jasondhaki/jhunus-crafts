@@ -95,7 +95,7 @@ export default async function HomePage() {
               {categories.map((category, index) => (
                 <Reveal key={category.id} delay={index * 0.05}>
                   <Link
-                    href={`/categories/${category.slug}`}
+                    href={`/shop?category=${category.slug}`}
                     className="group flex aspect-square flex-col items-center justify-center rounded-lg border border-hairline bg-parchment p-6 text-center transition-colors duration-200 ease-out hover:border-terracotta"
                   >
                     <span className="font-serif text-xl text-bark transition-colors duration-200 ease-out group-hover:text-terracotta">

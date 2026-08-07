@@ -4,10 +4,10 @@ import { Separator } from "@/components/ui/separator";
 import { NewsletterForm } from "@/components/layout/newsletter-form";
 
 const SHOP_LINKS = [
-  { href: "/categories/tote-bags", label: "Tote Bags" },
-  { href: "/categories/storage-baskets", label: "Storage Baskets" },
-  { href: "/categories/home-decor", label: "Home Decor" },
-  { href: "/categories/accessories", label: "Accessories" },
+  { href: "/shop?category=tote-bags", label: "Tote Bags" },
+  { href: "/shop?category=storage-baskets", label: "Storage Baskets" },
+  { href: "/shop?category=home-decor", label: "Home Decor" },
+  { href: "/shop?category=accessories", label: "Accessories" },
 ];
 
 const CARE_LINKS = [
