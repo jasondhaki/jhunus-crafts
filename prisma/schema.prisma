@@ -1,13 +1,236 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
+// Prisma 7: schema-level datasource `url`/`directUrl` are no longer supported.
+// - CLI/migrate connection string lives in prisma.config.ts (set to DIRECT_URL,
+//   since Neon's pooled connection doesn't support the session features migrations need).
+// - The runtime PrismaClient requires an explicit driver adapter — see src/lib/db.ts,
+//   which connects via @prisma/adapter-neon using the pooled DATABASE_URL.
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  // Required by @auth/prisma-adapter's AdapterUser contract (not in the original
+  // field list) — omitting it breaks OAuth/email sign-in at the type level.
+  emailVerified DateTime?
+  name          String?
+  passwordHash  String?
+  role          Role      @default(CUSTOMER)
+  image         String?
+
+  accounts Account[]
+  sessions Session[]
+  orders   Order[]
+  wishlist WishlistItem[]
+  reviews  Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Account / Session / VerificationToken shapes follow @auth/prisma-adapter's
+// AdapterAccount / AdapterSession / VerificationToken contracts exactly
+// (node_modules/@auth/core/src/adapters.ts), not the classic next-auth v4 shape.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+
+  products Product[]
+}
+
+model Product {
+  id             String   @id @default(cuid())
+  title          String
+  slug           String   @unique
+  description    String
+  priceCents     Int
+  compareAtCents Int?
+  stock          Int      @default(0)
+  images         String[]
+  dimensions     String?
+  materials      String   @default("100% Eco-Friendly Natural Jute")
+  weave          String?
+  color          String?
+  isFeatured     Boolean  @default(false)
+  isActive       Boolean  @default(true)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  reviews    Review[]
+  orderItems OrderItem[]
+  wishlisted WishlistItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([isActive, createdAt])
+}
+
+model Order {
+  id          String @id @default(cuid())
+  orderNumber String @unique
+
+  // Nullable for guest checkout. SetNull on user deletion (not Cascade) so
+  // orders survive account deletion — email is required precisely so a
+  // de-linked order is still fulfillable/auditable.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  email String
+  phone String?
+
+  items        OrderItem[]
+  statusEvents OrderStatusEvent[]
+
+  subtotalCents Int
+  shippingCents Int         @default(0)
+  totalCents    Int
+  status        OrderStatus @default(PENDING)
+
+  stripeIntentId String? @unique
+  shippingAddr   Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+// Admin-authored audit trail for manual status changes (src/actions/admin/
+// orders.ts). Deliberately NOT written by the Stripe webhook's automatic
+// transitions (payment_intent.succeeded/payment_failed, charge.refunded) —
+// this is specifically for explaining *manual* admin overrides ("customer
+// called, item damaged, cancelling"), not a full system-wide event log.
+model OrderStatusEvent {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  status OrderStatus
+  note   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model OrderItem {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  quantity       Int
+  unitPriceCents Int
+
+  // Snapshots: a product may be renamed, repriced, or deactivated after
+  // purchase — a historical invoice must never mutate with it. Products are
+  // soft-deleted (isActive=false), never hard-deleted, so this relation is
+  // never orphaned.
+  titleSnapshot String
+  imageSnapshot String?
+}
+
+model Review {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Nullable for the same reason as Order.userId; `author` is stored
+  // redundantly so a review still displays correctly after account deletion.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  rating     Int
+  comment    String
+  author     String
+  isApproved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([productId])
+}
+
+model WishlistItem {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+}
+
+// Stripe retries webhooks on any non-2xx response or timeout. Without this
+// unique event log, a retried `payment_intent.succeeded` would deduct stock
+// and mark an order PAID a second time for the same payment.
+model ProcessedWebhookEvent {
+  id          String   @id @default(cuid())
+  eventId     String   @unique
+  type        String
+  processedAt DateTime @default(now())
 }
