@@ -10,6 +10,7 @@ import { Container } from "@/components/ui/container";
 import { Separator } from "@/components/ui/separator";
 import { UserMenu, type UserMenuUser } from "@/components/layout/user-menu";
 import { signOutAction } from "@/actions/auth";
+import { useCartHasHydrated, useCartStore } from "@/store/cart";
 
 const NAV_LINKS = [
   { href: "/shop", label: "Shop" },
@@ -21,16 +22,25 @@ const ICON_BUTTON_CLASS =
   "inline-flex size-10 items-center justify-center rounded-full transition-colors duration-200 ease-out hover:bg-current/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jute focus-visible:ring-offset-2 focus-visible:ring-offset-parchment";
 
 interface HeaderProps {
-  cartCount?: number;
   user?: UserMenuUser | null;
 }
 
-export function Header({ cartCount = 0, user = null }: HeaderProps) {
+export function Header({ user = null }: HeaderProps) {
   const pathname = usePathname();
   const isHomepage = pathname === "/";
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const shouldReduceMotion = useReducedMotion();
+
+  const cartItems = useCartStore((state) => state.items);
+  const toggleCart = useCartStore((state) => state.toggle);
+  const cartHasHydrated = useCartHasHydrated();
+  // Gate the rendered count on hydration so SSR (which never sees the
+  // cart cookie) and the first client render agree — avoids a hydration
+  // mismatch as soon as a real cart cookie exists.
+  const cartCount = cartHasHydrated
+    ? cartItems.reduce((total, item) => total + item.quantity, 0)
+    : 0;
 
   useEffect(() => {
     function onScroll() {
@@ -103,8 +113,9 @@ export function Header({ cartCount = 0, user = null }: HeaderProps) {
           <div className="hidden md:inline-flex">
             <UserMenu user={user} />
           </div>
-          <Link
-            href="/cart"
+          <button
+            type="button"
+            onClick={toggleCart}
             className={cn(ICON_BUTTON_CLASS, "relative")}
             aria-label={cartCount > 0 ? `Cart, ${cartCount} items` : "Cart"}
           >
@@ -114,7 +125,7 @@ export function Header({ cartCount = 0, user = null }: HeaderProps) {
                 {cartCount}
               </span>
             )}
-          </Link>
+          </button>
         </div>
       </Container>
 

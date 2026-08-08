@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { auth } from "../../../../auth";
 import { db } from "@/lib/db";
 import { getProductBySlug } from "@/lib/product-query";
 import { Container } from "@/components/ui/container";
@@ -8,6 +9,7 @@ import { ProductGallery } from "@/components/shop/product-gallery";
 import { StarRating } from "@/components/shop/star-rating";
 import { ProductSpecs } from "@/components/shop/product-specs";
 import { AddToCart } from "@/components/shop/add-to-cart";
+import { WishlistButton } from "@/components/shop/wishlist-button";
 import { InfoAccordion } from "@/components/shop/info-accordion";
 import { ReviewsSection } from "@/components/shop/reviews-section";
 import { RelatedProducts } from "@/components/shop/related-products";
@@ -80,6 +82,13 @@ export default async function ProductPage({ params }: PageProps<"/shop/[slug]">)
   if (!product || !product.isActive) {
     notFound();
   }
+
+  const session = await auth();
+  const isWishlisted = session?.user
+    ? (await db.wishlistItem.findUnique({
+        where: { userId_productId: { userId: session.user.id, productId: product.id } },
+      })) !== null
+    : false;
 
   const reviewCount = product.reviews.length;
   const averageRating =
@@ -237,8 +246,15 @@ export default async function ProductPage({ params }: PageProps<"/shop/[slug]">)
               )}
             </p>
 
-            <div className="mt-6">
-              <AddToCart stock={product.stock} />
+            <div className="mt-6 flex items-end gap-3">
+              <div className="flex-1">
+                <AddToCart productId={product.id} stock={product.stock} />
+              </div>
+              <WishlistButton
+                productId={product.id}
+                isAuthenticated={!!session?.user}
+                initialWishlisted={isWishlisted}
+              />
             </div>
 
             <div className="mt-10">

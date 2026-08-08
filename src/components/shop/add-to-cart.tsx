@@ -1,17 +1,28 @@
 "use client";
 
-import { useId, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { Check, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useCartStore } from "@/store/cart";
+import { checkStock } from "@/actions/cart";
 
-// No cart store exists yet (Zustand cart is a separate, not-yet-built
-// piece of the stack) — this wires up quantity + the button's visual/
-// disabled states correctly, but the click handler is intentionally a
-// stub until that store lands.
-export function AddToCart({ stock }: { stock: number }) {
+type Status = "idle" | "added" | "unavailable";
+
+export function AddToCart({ productId, stock }: { productId: string; stock: number }) {
   const [quantity, setQuantity] = useState(1);
+  const [status, setStatus] = useState<Status>("idle");
+  const [isPending, startTransition] = useTransition();
+  const items = useCartStore((state) => state.items);
+  const addItem = useCartStore((state) => state.addItem);
+  const updateQuantity = useCartStore((state) => state.updateQuantity);
+  const openCart = useCartStore((state) => state.open);
+  const statusResetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inputId = useId();
   const isSoldOut = stock <= 0;
+
+  useEffect(() => {
+    return () => clearTimeout(statusResetTimer.current);
+  }, []);
 
   function decrement() {
     setQuantity((value) => Math.max(1, value - 1));
@@ -19,6 +30,37 @@ export function AddToCart({ stock }: { stock: number }) {
 
   function increment() {
     setQuantity((value) => Math.min(stock, value + 1));
+  }
+
+  function handleAddToCart() {
+    if (isSoldOut) return;
+
+    const existingQuantity = items.find((item) => item.productId === productId)?.quantity ?? 0;
+    const desiredTotal = existingQuantity + quantity;
+
+    // Optimistic: the cookie-backed cart and the drawer update immediately.
+    // The server round-trip below only reconciles the edge case where
+    // stock changed since the page loaded — it never blocks the UI.
+    addItem(productId, quantity);
+    openCart();
+    setStatus("added");
+    clearTimeout(statusResetTimer.current);
+    statusResetTimer.current = setTimeout(() => setStatus("idle"), 2000);
+
+    startTransition(async () => {
+      try {
+        const result = await checkStock(productId, desiredTotal);
+        if (!result.ok) {
+          updateQuantity(productId, result.availableStock);
+          if (result.availableStock <= 0) setStatus("unavailable");
+        }
+      } catch (error) {
+        // Non-critical reconciliation — the authoritative check still runs
+        // again at checkout, so a network hiccup here just means the user
+        // finds out one step later instead of instantly.
+        console.error("checkStock failed", error);
+      }
+    });
   }
 
   return (
@@ -65,9 +107,28 @@ export function AddToCart({ stock }: { stock: number }) {
           Sold Out
         </Button>
       ) : (
-        <Button type="button" size="lg" className="w-full">
-          Add to Cart
+        <Button
+          type="button"
+          size="lg"
+          className="w-full"
+          onClick={handleAddToCart}
+          loading={isPending && status !== "added"}
+        >
+          {status === "added" ? (
+            <>
+              <Check className="size-5" aria-hidden="true" />
+              Added
+            </>
+          ) : (
+            "Add to Cart"
+          )}
         </Button>
+      )}
+
+      {status === "unavailable" && (
+        <p className="text-sm text-terracotta" role="status">
+          That much stock is no longer available — your cart was adjusted.
+        </p>
       )}
     </div>
   );

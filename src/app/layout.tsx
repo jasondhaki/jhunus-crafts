@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { CartDrawer } from "@/components/shop/cart-drawer";
+import { WishlistMergeGate } from "@/components/shop/wishlist-merge-gate";
 import { SITE_URL } from "@/lib/site-config";
 import { auth } from "../../auth";
 import "./globals.css";
@@ -40,6 +42,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <Header user={session?.user ?? null} />
         <main className="flex-1">{children}</main>
         <Footer />
+        <CartDrawer />
+        <WishlistMergeGate isAuthenticated={!!session?.user} />
       </body>
     </html>
   );
