@@ -5,6 +5,7 @@ import { AuthError } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { credentialsSchema, registerSchema } from "@/lib/auth-schemas";
+import { getClientIp, rateLimit } from "@/lib/rate-limit";
 import { signIn, signOut } from "../../auth";
 
 export interface FormActionState {
@@ -17,6 +18,14 @@ export async function loginAction(
   _prevState: FormActionState,
   formData: FormData,
 ): Promise<FormActionState> {
+  // Credential stuffing / brute force target — 5 attempts/minute per IP
+  // is enough for a real person fumbling a password, not for a script.
+  const ip = await getClientIp();
+  const { success: withinLimit } = rateLimit(`login:${ip}`, 5, 60_000);
+  if (!withinLimit) {
+    return { error: "Too many sign-in attempts. Please wait a minute and try again." };
+  }
+
   const parsed = credentialsSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
@@ -46,6 +55,14 @@ export async function registerAction(
   _prevState: FormActionState,
   formData: FormData,
 ): Promise<FormActionState> {
+  // Prevents scripted mass account creation (and the bcrypt-hash CPU cost
+  // that comes with each attempt) — 5 accounts/minute per IP.
+  const ip = await getClientIp();
+  const { success: withinLimit } = rateLimit(`register:${ip}`, 5, 60_000);
+  if (!withinLimit) {
+    return { error: "Too many attempts. Please wait a minute and try again." };
+  }
+
   const parsed = registerSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),

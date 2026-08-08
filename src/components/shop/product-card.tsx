@@ -18,7 +18,18 @@ export interface ProductCardProduct {
   images: string[];
 }
 
-export function ProductCard({ product }: { product: ProductCardProduct }) {
+export function ProductCard({
+  product,
+  priority = false,
+}: {
+  product: ProductCardProduct;
+  // Set by the grid for whichever cards land above the fold on first
+  // paint — found via a real (not simulated) LCP warning in dev server
+  // logs while running the E2E suite: every ProductCard image was
+  // lazy-loaded by default, including whichever one the browser actually
+  // picked as the page's Largest Contentful Paint element.
+  priority?: boolean;
+}) {
   const isSoldOut = product.stock <= 0;
   const isLowStock = !isSoldOut && product.stock <= LOW_STOCK_THRESHOLD;
   const isOnSale = !isSoldOut && !!product.compareAtCents && product.compareAtCents > product.priceCents;
@@ -40,6 +51,14 @@ export function ProductCard({ product }: { product: ProductCardProduct }) {
               sizes={IMAGE_SIZES}
               placeholder="blur"
               blurDataURL={BLUR_DATA_URL}
+              priority={priority}
+              // As of Next 16, `priority` alone no longer sets
+              // fetchpriority="high" on the rendered <img> (deprecated in
+              // favor of `preload`/`fetchPriority` — see
+              // product-gallery.tsx for the full story). undefined here
+              // (not "low"/"auto") lets the browser's own default apply
+              // to non-prioritized cards.
+              fetchPriority={priority ? "high" : undefined}
               className={
                 "object-cover transition-opacity duration-300 ease-out" +
                 (secondaryImage ? " group-hover:opacity-0" : "")

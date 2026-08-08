@@ -36,6 +36,7 @@ export function AuthSplitLayout({ eyebrow, title, children }: AuthSplitLayoutPro
           sizes="50vw"
           className="object-cover"
           priority
+          fetchPriority="high"
         />
         <div className="absolute inset-0 bg-bark/20" />
       </div>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { OfflineBanner } from "@/components/layout/offline-banner";
 import { CartDrawer } from "@/components/shop/cart-drawer";
 import { WishlistMergeGate } from "@/components/shop/wishlist-merge-gate";
 import { SITE_URL } from "@/lib/site-config";
@@ -39,6 +40,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${playfairDisplay.variable} ${plusJakartaSans.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-parchment font-sans text-bark">
+        <OfflineBanner />
         <Header user={session?.user ?? null} />
         <main className="flex-1">{children}</main>
         <Footer />

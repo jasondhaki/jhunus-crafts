@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/money";
 import { useCartHasHydrated, useCartStore } from "@/store/cart";
 import { getCartDetails, type CartDetails } from "@/actions/cart";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const STEPPER_BUTTON_CLASS =
@@ -25,6 +26,8 @@ export function CartDrawer() {
 
   const [details, setDetails] = useState<CartDetails | null>(null);
   const [isPending, startTransition] = useTransition();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, isOpen);
 
   // A stable key derived from contents (not the array reference) so the
   // fetch effect below re-runs exactly on productId/quantity changes,
@@ -70,6 +73,7 @@ export function CartDrawer() {
             aria-hidden="true"
           />
           <motion.div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-label="Shopping cart"
@@ -197,6 +201,7 @@ export function CartDrawer() {
                 <p className="mt-1 text-xs text-jute">Shipping and taxes calculated at checkout.</p>
                 <Link
                   href="/checkout"
+                  onClick={close}
                   className="mt-4 inline-flex h-14 w-full items-center justify-center rounded-md bg-terracotta px-7 text-lg font-medium text-cream transition-colors duration-200 ease-out hover:bg-terracotta/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jute focus-visible:ring-offset-2 focus-visible:ring-offset-parchment"
                 >
                   Checkout

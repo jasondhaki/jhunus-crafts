@@ -23,6 +23,40 @@ const TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
 };
 
+// Serializable isolation doesn't just prevent write skew — Postgres
+// actively ABORTS one side of a genuine conflict with a serialization
+// failure (Prisma surfaces this as P2034) and expects the *application* to
+// retry. Found by actually running two payment_intent.succeeded webhooks
+// concurrently for the same product's last unit (see
+// e2e/oversell-concurrency.spec.ts): one transaction legitimately failed
+// with "Transaction failed due to a write conflict or a deadlock," which
+// — before this fix — fell through to the generic error handler and
+// returned a bare 500, leaving that order's confirmation entirely up to
+// Stripe's external retry schedule (which backs off to minutes, not
+// milliseconds). A handful of immediate in-process retries resolves the
+// overwhelmingly common case (the losing transaction almost always
+// succeeds a moment later, once the winner has committed) without waiting
+// on Stripe at all; if it's still conflicting after that, the existing
+// outer catch's 500 is still the correct fallback.
+async function withSerializableRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isSerializationConflict =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+      if (!isSerializationConflict || attempt === MAX_ATTEMPTS) {
+        throw error;
+      }
+      // Small jittered delay so two retrying losers don't immediately
+      // re-collide in lockstep.
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt + Math.random() * 50));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 type LogOutcome =
   | "rejected_no_secret"
   | "invalid_signature"
@@ -183,61 +217,63 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
 
   try {
-    await db.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({
-        where: { stripeIntentId: paymentIntent.id },
-        include: { items: true },
-      });
-
-      if (!order) {
-        // A PaymentIntent with no matching order is unrecoverable —
-        // retrying will never make the order appear. Log loudly, commit
-        // nothing, and the caller acks 200 so Stripe stops retrying.
-        log("error", "payment_intent.succeeded for a PaymentIntent with no matching order", {
-          eventId: event.id,
-          eventType: event.type,
-          detail: paymentIntent.id,
-          outcome: "order_not_found",
+    await withSerializableRetry(() =>
+      db.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { stripeIntentId: paymentIntent.id },
+          include: { items: true },
         });
-        return;
-      }
 
-      if (order.status === "PAID") {
-        // Second layer of idempotency, independent of the event-id claim
-        // above — belt and suspenders against ever re-deducting stock for
-        // an order that's already fulfilled its payment.
-        log("info", "payment_intent.succeeded for an already-PAID order", {
+        if (!order) {
+          // A PaymentIntent with no matching order is unrecoverable —
+          // retrying will never make the order appear. Log loudly, commit
+          // nothing, and the caller acks 200 so Stripe stops retrying.
+          log("error", "payment_intent.succeeded for a PaymentIntent with no matching order", {
+            eventId: event.id,
+            eventType: event.type,
+            detail: paymentIntent.id,
+            outcome: "order_not_found",
+          });
+          return;
+        }
+
+        if (order.status === "PAID") {
+          // Second layer of idempotency, independent of the event-id claim
+          // above — belt and suspenders against ever re-deducting stock
+          // for an order that's already fulfilled its payment.
+          log("info", "payment_intent.succeeded for an already-PAID order", {
+            eventId: event.id,
+            eventType: event.type,
+            orderNumber: order.orderNumber,
+            outcome: "already_paid_skipped",
+          });
+          return;
+        }
+
+        for (const item of order.items) {
+          // Atomic conditional decrement — never read-then-write. Exactly
+          // one row can match this `where` (id is the primary key), so
+          // `count` is either 1 (decremented) or 0 (oversold).
+          const result = await tx.product.updateMany({
+            where: { id: item.productId, stock: { gte: item.quantity } },
+            data: { stock: { decrement: item.quantity } },
+          });
+
+          if (result.count !== 1) {
+            throw new OversellError(order.id, order.orderNumber, item.productId);
+          }
+        }
+
+        await tx.order.update({ where: { id: order.id }, data: { status: "PAID" } });
+
+        log("info", "Order marked PAID and stock deducted", {
           eventId: event.id,
           eventType: event.type,
           orderNumber: order.orderNumber,
-          outcome: "already_paid_skipped",
+          outcome: "paid",
         });
-        return;
-      }
-
-      for (const item of order.items) {
-        // Atomic conditional decrement — never read-then-write. Exactly
-        // one row can match this `where` (id is the primary key), so
-        // `count` is either 1 (decremented) or 0 (oversold).
-        const result = await tx.product.updateMany({
-          where: { id: item.productId, stock: { gte: item.quantity } },
-          data: { stock: { decrement: item.quantity } },
-        });
-
-        if (result.count !== 1) {
-          throw new OversellError(order.id, order.orderNumber, item.productId);
-        }
-      }
-
-      await tx.order.update({ where: { id: order.id }, data: { status: "PAID" } });
-
-      log("info", "Order marked PAID and stock deducted", {
-        eventId: event.id,
-        eventType: event.type,
-        orderNumber: order.orderNumber,
-        outcome: "paid",
-      });
-    }, TRANSACTION_OPTIONS);
+      }, TRANSACTION_OPTIONS),
+    );
   } catch (error) {
     if (error instanceof OversellError) {
       // The transaction above has already rolled back in full — no
@@ -325,51 +361,53 @@ async function handleChargeRefunded(event: Stripe.Event) {
     return;
   }
 
-  await db.$transaction(async (tx) => {
-    const order = await tx.order.findUnique({
-      where: { stripeIntentId: paymentIntentId },
-      include: { items: true },
-    });
-
-    if (!order) {
-      log("error", "charge.refunded for a PaymentIntent with no matching order", {
-        eventId: event.id,
-        eventType: event.type,
-        detail: paymentIntentId,
-        outcome: "order_not_found",
+  await withSerializableRetry(() =>
+    db.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { stripeIntentId: paymentIntentId },
+        include: { items: true },
       });
-      return;
-    }
 
-    if (order.status !== "PAID") {
-      // Only a PAID order ever had stock deducted — restoring stock for
-      // one that didn't (already CANCELLED, or somehow still PENDING)
-      // would incorrectly inflate inventory.
-      log("info", "charge.refunded for an order that was never PAID — skipping stock restore", {
+      if (!order) {
+        log("error", "charge.refunded for a PaymentIntent with no matching order", {
+          eventId: event.id,
+          eventType: event.type,
+          detail: paymentIntentId,
+          outcome: "order_not_found",
+        });
+        return;
+      }
+
+      if (order.status !== "PAID") {
+        // Only a PAID order ever had stock deducted — restoring stock for
+        // one that didn't (already CANCELLED, or somehow still PENDING)
+        // would incorrectly inflate inventory.
+        log("info", "charge.refunded for an order that was never PAID — skipping stock restore", {
+          eventId: event.id,
+          eventType: event.type,
+          orderNumber: order.orderNumber,
+          outcome: "skipped_never_paid",
+        });
+        return;
+      }
+
+      for (const item of order.items) {
+        // The inverse of the atomic decrement above — no `gte` guard
+        // needed on the way back up, since incrementing can't oversell.
+        await tx.product.updateMany({
+          where: { id: item.productId },
+          data: { stock: { increment: item.quantity } },
+        });
+      }
+
+      await tx.order.update({ where: { id: order.id }, data: { status: "CANCELLED" } });
+
+      log("info", "Order cancelled and stock restored after refund", {
         eventId: event.id,
         eventType: event.type,
         orderNumber: order.orderNumber,
-        outcome: "skipped_never_paid",
+        outcome: "refunded_stock_restored",
       });
-      return;
-    }
-
-    for (const item of order.items) {
-      // The inverse of the atomic decrement above — no `gte` guard
-      // needed on the way back up, since incrementing can't oversell.
-      await tx.product.updateMany({
-        where: { id: item.productId },
-        data: { stock: { increment: item.quantity } },
-      });
-    }
-
-    await tx.order.update({ where: { id: order.id }, data: { status: "CANCELLED" } });
-
-    log("info", "Order cancelled and stock restored after refund", {
-      eventId: event.id,
-      eventType: event.type,
-      orderNumber: order.orderNumber,
-      outcome: "refunded_stock_restored",
-    });
-  }, TRANSACTION_OPTIONS);
+    }, TRANSACTION_OPTIONS),
+  );
 }

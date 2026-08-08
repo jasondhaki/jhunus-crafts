@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, ZoomIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { shimmerDataUrl } from "@/lib/blur-placeholder";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 const BLUR_DATA_URL = shimmerDataUrl(800, 800);
 
@@ -18,6 +19,8 @@ export function ProductGallery({ images, title }: ProductGalleryProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [zoomPos, setZoomPos] = useState({ x: 50, y: 50 });
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const fullscreenDialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(fullscreenDialogRef, fullscreenOpen);
 
   const activeImage = images[activeIndex];
 
@@ -77,7 +80,15 @@ export function ProductGallery({ images, title }: ProductGalleryProps) {
           sizes="(min-width: 1024px) 50vw, 100vw"
           placeholder="blur"
           blurDataURL={BLUR_DATA_URL}
+          // priority alone still stops this from lazy-loading, but as of
+          // Next 16 it no longer sets fetchpriority="high" on the <img>
+          // itself (deprecated in favor of the new `preload` prop, which
+          // the docs then say to avoid too — fetchPriority is the
+          // recommended way to hint the LCP image). Confirmed via a real
+          // Lighthouse run: the rendered <img> had no fetchpriority
+          // attribute at all until this was added explicitly.
           priority
+          fetchPriority="high"
           className="object-cover"
         />
 
@@ -127,6 +138,7 @@ export function ProductGallery({ images, title }: ProductGalleryProps) {
       <AnimatePresence>
         {fullscreenOpen && (
           <motion.div
+            ref={fullscreenDialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={`${title} — fullscreen image`}

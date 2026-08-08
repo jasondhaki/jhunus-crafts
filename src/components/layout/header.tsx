@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Heart, LayoutDashboard, LogOut, Menu, Search, ShoppingBag, User, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { UserMenu, type UserMenuUser } from "@/components/layout/user-menu";
 import { signOutAction } from "@/actions/auth";
 import { useCartHasHydrated, useCartStore } from "@/store/cart";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 const NAV_LINKS = [
   { href: "/shop", label: "Shop" },
@@ -30,6 +31,8 @@ export function Header({ user = null }: HeaderProps) {
   const isHomepage = pathname === "/";
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileNavRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(mobileNavRef, mobileOpen);
   const shouldReduceMotion = useReducedMotion();
 
   const cartItems = useCartStore((state) => state.items);
@@ -126,6 +129,17 @@ export function Header({ user = null }: HeaderProps) {
               </span>
             )}
           </button>
+          {/* The badge above is aria-hidden via the icon-only button's own
+              aria-label, which only gets read when the button itself is
+              focused — it's silent when the count changes from elsewhere
+              (e.g. an "Add to Cart" click on a product page). This region
+              mirrors the count as text so screen readers announce it on
+              every change regardless of where focus currently is. */}
+          <span aria-live="polite" className="sr-only">
+            {cartHasHydrated
+              ? `Cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`
+              : ""}
+          </span>
         </div>
       </Container>
 
@@ -142,6 +156,7 @@ export function Header({ user = null }: HeaderProps) {
               aria-hidden="true"
             />
             <motion.div
+              ref={mobileNavRef}
               id="mobile-nav"
               role="dialog"
               aria-modal="true"

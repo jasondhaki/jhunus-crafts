@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { SlidersHorizontal, X } from "lucide-react";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import { useShopFilters } from "./use-shop-filters";
 
 interface FilterSidebarProps {
@@ -77,6 +78,8 @@ export function FilterSidebar({ categories, weaves }: FilterSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const shouldReduceMotion = useReducedMotion();
   const { searchParams, isPending, toggleArrayValue, setValue, clearAll } = useShopFilters();
+  const mobileDialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(mobileDialogRef, mobileOpen);
 
   const selectedCategories = searchParams.getAll("category");
   const selectedWeaves = searchParams.getAll("weave");
@@ -189,6 +192,7 @@ export function FilterSidebar({ categories, weaves }: FilterSidebarProps) {
                 aria-hidden="true"
               />
               <motion.div
+                ref={mobileDialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-label="Filters"

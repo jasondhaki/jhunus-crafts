@@ -10,4 +10,10 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  test: {
+    // e2e/ holds Playwright specs (also named *.spec.ts) — without this,
+    // vitest's default include pattern picks them up too and fails on
+    // Playwright's test.describe(), which vitest doesn't understand.
+    exclude: ["**/node_modules/**", "**/e2e/**"],
+  },
 });

@@ -114,7 +114,13 @@ export function CheckoutPageClient({ initialEmail }: { initialEmail?: string }) 
       }
 
       if (!response.ok) {
-        setSubmitError("Something went wrong placing your order. Please try again.");
+        // The route handler returns a specific, actionable message for
+        // known outage modes (Stripe down, DB unreachable) — fall back to
+        // a generic one only for responses we can't parse or didn't
+        // anticipate.
+        const fallback = "Something went wrong placing your order. Please try again.";
+        const body: { error?: string } | null = await response.json().catch(() => null);
+        setSubmitError(body?.error ?? fallback);
         setSubmitting(false);
         return;
       }

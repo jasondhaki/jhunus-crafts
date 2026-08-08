@@ -14,8 +14,10 @@ export async function ProductGrid({ params }: { params: ShopSearchParams }) {
   return (
     <div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-        {products.map((product) => (
-          <ProductCard key={product.id} product={product} />
+        {products.map((product, index) => (
+          // First row (the widest layout is 3 columns) is above the fold
+          // on initial paint — everything after it should stay lazy.
+          <ProductCard key={product.id} product={product} priority={index < 3} />
         ))}
       </div>
       <ShopPagination params={params} pageCount={pageCount} />
