@@ -137,7 +137,8 @@ model Order {
   email String
   phone String?
 
-  items OrderItem[]
+  items        OrderItem[]
+  statusEvents OrderStatusEvent[]
 
   subtotalCents Int
   shippingCents Int         @default(0)
@@ -152,6 +153,24 @@ model Order {
 
   @@index([userId])
   @@index([status])
+}
+
+// Admin-authored audit trail for manual status changes (src/actions/admin/
+// orders.ts). Deliberately NOT written by the Stripe webhook's automatic
+// transitions (payment_intent.succeeded/payment_failed, charge.refunded) —
+// this is specifically for explaining *manual* admin overrides ("customer
+// called, item damaged, cancelling"), not a full system-wide event log.
+model OrderStatusEvent {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  status OrderStatus
+  note   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
 }
 
 model OrderItem {
