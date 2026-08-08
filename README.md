@@ -53,6 +53,52 @@ A production e-commerce storefront for handcrafted jute products — bags, holde
 
 Other useful scripts: `npm run typecheck`, `npm run test`, `npm run db:migrate`, `npm run db:studio`, `npm run lint`, `npm run build`.
 
+## Testing the Stripe webhook locally
+
+`POST /api/webhooks/stripe` (`src/app/api/webhooks/stripe/route.ts`) is where an order actually
+becomes `PAID` and stock is deducted — it only trusts requests carrying a valid Stripe signature,
+so exercising it end-to-end requires the [Stripe CLI](https://docs.stripe.com/stripe-cli), not a
+plain `curl`.
+
+1. **Install and authenticate the CLI** (one-time):
+   ```bash
+   stripe login
+   ```
+
+2. **Forward events to your local dev server.** Run this in its own terminal, alongside `npm run
+   dev`:
+   ```bash
+   stripe listen --forward-to localhost:3000/api/webhooks/stripe
+   ```
+   The CLI prints a webhook signing secret (`whsec_...`) the moment it starts — copy that into
+   `STRIPE_WEBHOOK_SECRET` in `.env.local` and restart `npm run dev` so the route picks it up.
+   This is a *different* secret than the one on your Stripe Dashboard's webhook settings; the CLI
+   mints one scoped to this forwarding session.
+
+3. **Trigger a synthetic event** without going through a real checkout:
+   ```bash
+   stripe trigger payment_intent.succeeded
+   ```
+   This fires a `payment_intent.succeeded` event with Stripe-generated fake data. Since it won't
+   reference a real order in your database, expect (and look for) the route's "no matching order"
+   log line — that confirms signature verification and idempotency claiming both worked; it's not
+   a failure.
+
+4. **For a real end-to-end run** (the version that actually deducts stock), go through
+   `/checkout` in the browser with a real cart and Stripe's test card `4242 4242 4242 4242`, any
+   future expiry, any CVC, and any postal code. The PaymentIntent created by `/api/checkout` will
+   reference a real order, so `stripe listen` forwarding its `payment_intent.succeeded` event will
+   drive the full path: stock decrement, `status → PAID`, and the `/checkout/success` page's
+   polling should resolve.
+
+5. **Replay a specific event** (useful for reproducing an idempotency or oversell scenario) by
+   grabbing its id from the `stripe listen` output and running:
+   ```bash
+   stripe events resend evt_...
+   ```
+   Sending the same event id twice in a row is exactly how to confirm the duplicate-event
+   short-circuit (step 3 in the route) is actually working, not just unit-tested.
+
 ## Phases
 
 - [x] **Phase 1 — Scaffolding**: Next.js + TypeScript + Tailwind + core dependencies, env template, CI, GitHub repo.
