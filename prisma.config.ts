@@ -16,5 +16,10 @@ export default defineConfig({
   // adapter (see src/lib/db.ts), so this only affects the CLI.
   datasource: {
     url: process.env["DIRECT_URL"],
+    // Only used by commands that need to replay migration history to
+    // determine a resulting schema (`migrate dev`, `migrate diff
+    // --from-migrations`) — undefined in normal local/CI runs that don't
+    // touch migration history, so leaving this unset doesn't break anything.
+    shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"],
   },
 });

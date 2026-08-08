@@ -73,6 +73,16 @@ does not follow Vercel's automatic domain aliasing.
 - Prisma tracks applied migrations in the `_prisma_migrations` table in the
   database itself — `migrate deploy` is safe to run repeatedly; it only
   applies what hasn't been applied yet.
+- **Avoid `prisma db push` against any database that also gets migrations**
+  (i.e. the dev database, and definitely production). `db push` writes
+  schema changes directly with no migration file — which is exactly how
+  `OrderStatusEvent` ended up in the dev database with nothing in
+  `prisma/migrations` to show for it (fixed in
+  `20260808180435_add_order_status_event_and_drift`). `db push` is fine
+  against a genuinely disposable database (a scratch Neon branch you're
+  about to throw away) but never against one that migration history is
+  supposed to describe. The `schema-drift-check` CI job (below) exists
+  specifically to catch a recurrence of this.
 
 ## Rollback procedure
 
@@ -111,7 +121,7 @@ is what makes this safe either way, not the rollback itself.
 
 ## CI/CD
 
-`.github/workflows/ci.yml` runs three jobs on every push/PR to `main`:
+`.github/workflows/ci.yml` runs four jobs on every push/PR to `main`:
 
 1. **`build`** — install, `prisma generate`, lint, typecheck, unit tests
    (`npm test`), `next build`. Always runs, no external secrets required.
@@ -122,11 +132,33 @@ is what makes this safe either way, not the rollback itself.
    the project settings page for the project ID); skips its steps cleanly
    (green, no-op) if they're not configured, so this doesn't block anyone
    who hasn't wired it up yet.
-3. **`deploy`** — only on a push to `main`, only after `build` and `e2e`
-   pass. Requires `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` repo
-   secrets (Vercel dashboard → Account Settings → Tokens for the token; `npx
-   vercel link` locally reveals the org/project IDs in
-   `.vercel/project.json`). Skips cleanly if unset — if Vercel's own Git
-   integration is connected to this repo instead, leave this unset and let
-   Vercel deploy on its own; don't run both, or every `main` push double-
-   deploys.
+3. **`schema-drift-check`** — provisions its own disposable Neon branch,
+   builds it from `prisma/migrations` alone (`migrate deploy`, nothing else),
+   then diffs the result against `prisma/schema.prisma`
+   (`migrate diff --from-config-datasource --to-schema ... --exit-code`). A
+   non-empty diff fails the build — this is what catches the next `db push`
+   (or any other out-of-band change) drifting ahead of migration history
+   before it becomes another silent gap like the one fixed by
+   `prisma/migrations/20260808180435_add_order_status_event_and_drift`.
+   Same `NEON_API_KEY`/`NEON_PROJECT_ID` gating as `e2e`.
+4. **`deploy`** — only on a push to `main`, only after `build`, `e2e`, and
+   `schema-drift-check` all pass. Requires `VERCEL_TOKEN`, `VERCEL_ORG_ID`,
+   `VERCEL_PROJECT_ID` repo secrets (Vercel dashboard → Account Settings →
+   Tokens for the token; `npx vercel link` locally reveals the org/project
+   IDs in `.vercel/project.json`). Skips cleanly if unset — if Vercel's own
+   Git integration is connected to this repo instead, leave this unset and
+   let Vercel deploy on its own; don't run both, or every `main` push
+   double-deploys.
+
+### Local drift check
+
+The same check can be run locally against any real database without
+provisioning a Neon branch, by pointing `DIRECT_URL` at it directly:
+
+```
+DIRECT_URL="<url of a db built from migrations only>" \
+  npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+```
+
+Exit code `0` means no drift, `2` means real drift (something changed the
+database outside of `prisma migrate`), `1` means the command itself failed.
