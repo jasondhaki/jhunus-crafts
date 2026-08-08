@@ -3,32 +3,12 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth-guards";
-import type { ProductCardProduct } from "@/components/shop/product-card";
+import type { WishlistProduct } from "@/lib/wishlist-query";
+
+export type { WishlistProduct } from "@/lib/wishlist-query";
 
 const productIdSchema = z.string().min(1);
 const productIdsSchema = z.array(productIdSchema).max(200);
-
-function toProductCardProduct(product: {
-  slug: string;
-  title: string;
-  priceCents: number;
-  compareAtCents: number | null;
-  stock: number;
-  images: string[];
-}): ProductCardProduct {
-  return {
-    slug: product.slug,
-    title: product.title,
-    priceCents: product.priceCents,
-    compareAtCents: product.compareAtCents,
-    stock: product.stock,
-    images: product.images,
-  };
-}
-
-export interface WishlistProduct extends ProductCardProduct {
-  productId: string;
-}
 
 // Guest wishlist hydration: takes the cookie-held productIds and returns
 // live product data, same "never trust client-cached data" principle as
@@ -41,7 +21,15 @@ export async function getWishlistProducts(productIds: string[]): Promise<Wishlis
     where: { id: { in: parsed.data }, isActive: true },
   });
 
-  return products.map((product) => ({ productId: product.id, ...toProductCardProduct(product) }));
+  return products.map((product) => ({
+    productId: product.id,
+    slug: product.slug,
+    title: product.title,
+    priceCents: product.priceCents,
+    compareAtCents: product.compareAtCents,
+    stock: product.stock,
+    images: product.images,
+  }));
 }
 
 export async function addWishlistItem(productId: string): Promise<void> {

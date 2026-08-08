@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import { auth } from "../../../auth";
-import { db } from "@/lib/db";
+import { getWishlistForUser } from "@/lib/wishlist-query";
 import { Container } from "@/components/ui/container";
 import { WishlistAuthedView } from "@/components/shop/wishlist-authed-view";
 import { WishlistGuestView } from "@/components/shop/wishlist-guest-view";
-import type { WishlistProduct } from "@/actions/wishlist";
 
 export const metadata: Metadata = {
   title: "Wishlist",
@@ -30,23 +29,6 @@ export default async function WishlistPage() {
 }
 
 async function AuthedWishlist({ userId }: { userId: string }) {
-  const items = await db.wishlistItem.findMany({
-    where: { userId },
-    include: { product: true },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const products: WishlistProduct[] = items
-    .filter((item) => item.product.isActive)
-    .map((item) => ({
-      productId: item.product.id,
-      slug: item.product.slug,
-      title: item.product.title,
-      priceCents: item.product.priceCents,
-      compareAtCents: item.product.compareAtCents,
-      stock: item.product.stock,
-      images: item.product.images,
-    }));
-
+  const products = await getWishlistForUser(userId);
   return <WishlistAuthedView initialProducts={products} />;
 }
